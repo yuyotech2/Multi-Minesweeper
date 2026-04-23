@@ -2,108 +2,10 @@ const ROWS = 16;
 const COLS = 16;
 const MINES = 40;
 
+let mineSeed = [];
 let gameActive = false;
 
-// WebRTC Networking Variables
-let peer = null;
-let conn = null;
-let isHost = false;
-let localPlayerId = '';
-
-// Initialize PeerJS
-function initNetwork() {
-    peer = new Peer(); // Use free public PeerJS server
-    
-    peer.on('open', (id) => {
-        document.getElementById('connection-status').classList.add('hidden');
-        document.getElementById('menu-buttons').classList.remove('hidden');
-    });
-    
-    peer.on('error', (err) => {
-        console.error(err);
-        document.getElementById('connection-status').textContent = "Connection Error. Please refresh.";
-    });
-}
-
-function generateRoomCode() {
-    return 'NEON-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-}
-
-function setupConnection() {
-    conn.on('open', () => {
-        document.getElementById('matchmaking-overlay').classList.add('hidden');
-        
-        if (isHost) {
-            let mineSeed = generateMines();
-            let seedArr = Array.from(mineSeed);
-            conn.send({ type: 'INIT', seed: seedArr });
-            startGame(mineSeed);
-        }
-    });
-
-    conn.on('data', (data) => {
-        if (data.type === 'INIT') {
-            document.getElementById('matchmaking-overlay').classList.add('hidden');
-            let mineSeed = new Set(data.seed);
-            startGame(mineSeed);
-        } else if (data.type === 'REVEAL') {
-            let board = data.player === 'p1' ? p1Board : p2Board;
-            board.reveal(data.r, data.c, true);
-        } else if (data.type === 'FLAG') {
-            let board = data.player === 'p1' ? p1Board : p2Board;
-            board.toggleFlag(data.r, data.c, true);
-        } else if (data.type === 'PENALTY') {
-            let board = data.player === 'p1' ? p1Board : p2Board;
-            board.triggerPenalty(true);
-        } else if (data.type === 'REMATCH') {
-            if (isHost) {
-                let mineSeed = generateMines();
-                conn.send({ type: 'INIT', seed: Array.from(mineSeed) });
-                startGame(mineSeed);
-            }
-        }
-    });
-    
-    conn.on('close', () => {
-        alert("Opponent disconnected!");
-        location.reload();
-    });
-}
-
-// UI Buttons for Matchmaking
-document.getElementById('btn-host').onclick = () => {
-    isHost = true;
-    localPlayerId = 'p1';
-    let roomCode = generateRoomCode();
-    
-    peer.destroy(); // Reconnect with a specific beautiful ID
-    peer = new Peer(roomCode);
-    
-    peer.on('open', (id) => {
-        document.getElementById('menu-buttons').classList.add('hidden');
-        document.getElementById('lobby-screen').classList.remove('hidden');
-        document.getElementById('display-room-code').textContent = id;
-    });
-
-    peer.on('connection', (connection) => {
-        if (conn) return;
-        conn = connection;
-        setupConnection();
-    });
-};
-
-document.getElementById('btn-join').onclick = () => {
-    let code = document.getElementById('join-code').value.toUpperCase().trim();
-    if (!code) return;
-    
-    isHost = false;
-    localPlayerId = 'p2';
-    document.getElementById('btn-join').textContent = "CONNECTING...";
-    
-    conn = peer.connect(code);
-    setupConnection();
-};
-
+// Generate a random seed of mine coordinates
 function generateMines() {
     let minePositions = new Set();
     while (minePositions.size < MINES) {
@@ -114,13 +16,9 @@ function generateMines() {
     return minePositions;
 }
 
-// Game Logic
-let p1Board, p2Board;
-
 class Board {
-    constructor(playerId, minePositions, isLocal) {
+    constructor(playerId, minePositions) {
         this.playerId = playerId;
-        this.isLocal = isLocal;
         this.container = document.getElementById(`${playerId}-board`);
         this.overlay = document.getElementById(`${playerId}-overlay`);
         this.timerSpan = this.overlay.querySelector('.penalty-timer');
@@ -135,15 +33,6 @@ class Board {
         this.initGrid();
         this.render();
         this.updateHUD();
-
-        // Visual distinction for the remote player's board
-        if (!this.isLocal) {
-            document.getElementById(`${playerId}-side`).style.opacity = '0.5';
-            this.container.style.pointerEvents = 'none';
-        } else {
-            document.getElementById(`${playerId}-side`).style.opacity = '1';
-            this.container.style.pointerEvents = 'auto';
-        }
     }
 
     initGrid() {
@@ -160,7 +49,7 @@ class Board {
             this.grid.push(row);
         }
 
-        // Pre-calculate numbers
+        // Pre-calculate neighbor numbers
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
                 if (!this.grid[r][c].isMine) {
@@ -206,13 +95,18 @@ class Board {
     }
 
     handleInteraction(e, r, c) {
-        if (!gameActive || this.isFrozen || !this.isLocal) return;
+        if (!gameActive || this.isFrozen) return;
         
         let cell = this.grid[r][c];
         
-        // Right click
+        // Right click flag
         if (e.button === 2) {
-            this.toggleFlag(r, c, false);
+            if (!cell.isRevealed) {
+                cell.isFlagged = !cell.isFlagged;
+                this.flagsPlaced += cell.isFlagged ? 1 : -1;
+                this.updateCellUI(r, c);
+                this.updateHUD();
+            }
             return;
         }
         
@@ -221,29 +115,15 @@ class Board {
             if (cell.isFlagged || cell.isRevealed) return;
             
             if (cell.isMine) {
-                this.triggerPenalty(false);
+                this.triggerPenalty();
             } else {
-                this.reveal(r, c, false);
+                this.reveal(r, c);
                 this.checkWin();
             }
         }
     }
 
-    toggleFlag(r, c, fromNetwork) {
-        let cell = this.grid[r][c];
-        if (cell.isRevealed) return;
-        
-        cell.isFlagged = !cell.isFlagged;
-        this.flagsPlaced += cell.isFlagged ? 1 : -1;
-        this.updateCellUI(r, c);
-        this.updateHUD();
-
-        if (this.isLocal && !fromNetwork && conn) {
-            conn.send({ type: 'FLAG', player: this.playerId, r, c });
-        }
-    }
-
-    reveal(r, c, fromNetwork) {
+    reveal(r, c) {
         if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
         let cell = this.grid[r][c];
         
@@ -252,15 +132,12 @@ class Board {
         cell.isRevealed = true;
         this.revealedCount++;
         this.updateCellUI(r, c);
-
-        if (this.isLocal && !fromNetwork && conn) {
-            conn.send({ type: 'REVEAL', player: this.playerId, r, c });
-        }
         
+        // Auto-reveal neighbors if 0
         if (cell.neighborMines === 0) {
             for (let dr = -1; dr <= 1; dr++) {
                 for (let dc = -1; dc <= 1; dc++) {
-                    this.reveal(r + dr, c + dc, fromNetwork);
+                    this.reveal(r + dr, c + dc);
                 }
             }
         }
@@ -283,23 +160,19 @@ class Board {
             }
         } else if (cell.isFlagged) {
             cellEl.classList.add('flagged');
-            cellEl.textContent = '';
+            cellEl.textContent = ''; // Managed by CSS ::after
         } else {
             cellEl.classList.remove('flagged');
             cellEl.textContent = '';
         }
     }
 
-    triggerPenalty(fromNetwork) {
+    triggerPenalty() {
         this.isFrozen = true;
         this.overlay.classList.remove('hidden');
         let timeLeft = 5;
         this.timerSpan.textContent = timeLeft;
         
-        if (this.isLocal && !fromNetwork && conn) {
-            conn.send({ type: 'PENALTY', player: this.playerId });
-        }
-
         let interval = setInterval(() => {
             timeLeft--;
             this.timerSpan.textContent = timeLeft;
@@ -319,11 +192,16 @@ class Board {
     }
 }
 
-function startGame(seed) {
-    p1Board = new Board('p1', seed, localPlayerId === 'p1');
-    p2Board = new Board('p2', seed, localPlayerId === 'p2');
+let p1Board, p2Board;
+
+function startGame() {
+    mineSeed = generateMines();
+    p1Board = new Board('p1', mineSeed);
+    p2Board = new Board('p2', mineSeed);
     gameActive = true;
+    
     document.getElementById('winner-modal').classList.add('hidden');
+    document.getElementById('start-btn').textContent = "RESTART";
 }
 
 function endGame(winnerId) {
@@ -343,25 +221,12 @@ function endGame(winnerId) {
     }
 }
 
-document.getElementById('rematch-btn').addEventListener('click', () => {
-    document.getElementById('winner-text').textContent = "WAITING...";
-    if (conn) {
-        conn.send({ type: 'REMATCH' });
-    }
-    // If host, also trigger init locally handled in conn.on('REMATCH') equivalent, but we put it there
-    if (isHost) {
-        let mineSeed = generateMines();
-        conn.send({ type: 'INIT', seed: Array.from(mineSeed) });
-        startGame(mineSeed);
-    }
-});
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('rematch-btn').addEventListener('click', startGame);
 
-// Initialize empty boards so it looks nice before starting
-p1Board = new Board('p1', new Set(), false);
-p2Board = new Board('p2', new Set(), false);
+// Initialize empty display boards
+p1Board = new Board('p1', new Set());
+p2Board = new Board('p2', new Set());
 
 // Prevent global right click menu
 window.addEventListener('contextmenu', e => e.preventDefault());
-
-// Start networking
-initNetwork();

@@ -3,37 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neon Sweeper: Duel (Online P2P)</title>
+    <title>Neon Sweeper: Duel</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
-    <!-- PeerJS for WebRTC Peer-to-Peer Networking -->
-    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
 </head>
 <body>
-    <!-- Matchmaking UI -->
-    <div id="matchmaking-overlay">
-        <div class="matchmaking-box">
-            <h1 class="title-glitch" data-text="NEON DUEL">NEON DUEL</h1>
-            <div id="connection-status">Connecting to matchmaking server...</div>
-            
-            <div id="menu-buttons" class="hidden">
-                <button id="btn-host">HOST GAME</button>
-                <div class="divider-text">- OR -</div>
-                <input type="text" id="join-code" placeholder="ENTER ROOM CODE" maxlength="10">
-                <button id="btn-join">JOIN GAME</button>
-            </div>
-
-            <div id="lobby-screen" class="hidden">
-                <h2>YOUR ROOM CODE:</h2>
-                <h1 id="display-room-code">----</h1>
-                <p>Send this code to your opponent.</p>
-                <div class="spinner"></div>
-                <p>Waiting for them to join...</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main Game -->
     <div id="game-container">
         <!-- Player 1 Side -->
         <div id="p1-side" class="player-side p1-theme">
@@ -45,13 +19,14 @@
             </div>
             <div id="p1-board" class="minesweeper-board"></div>
             <div id="p1-overlay" class="penalty-overlay hidden">
-                SYSTEM FAULT<br><span class="penalty-timer">5</span>
+                SYSTEM REBOOTING<br><span class="penalty-timer">5</span>
             </div>
         </div>
 
         <!-- Center Divider -->
         <div id="divider">
-            <div class="timer">ONLINE DUEL</div>
+            <div class="timer">DUEL</div>
+            <button id="start-btn">START</button>
         </div>
 
         <!-- Player 2 Side -->
@@ -64,14 +39,14 @@
             </div>
             <div id="p2-board" class="minesweeper-board"></div>
             <div id="p2-overlay" class="penalty-overlay hidden">
-                SYSTEM FAULT<br><span class="penalty-timer">5</span>
+                SYSTEM REBOOTING<br><span class="penalty-timer">5</span>
             </div>
         </div>
     </div>
     
     <div id="winner-modal" class="hidden">
         <h1 id="winner-text">PLAYER 1 WINS</h1>
-        <button id="rematch-btn">PLAY AGAIN</button>
+        <button id="rematch-btn">REMATCH</button>
     </div>
 
     <script src="main.js"></script>
