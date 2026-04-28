@@ -67,7 +67,7 @@ function setupConnection() {
             b.toggleFlag(data.r, data.c, true);
         } else if (data.type === 'LOSS') {
             let b = data.p === 'p1' ? p1Board : p2Board;
-            b.triggerLoss(true);
+            b.triggerPenalty(true);
         } else if (data.type === 'REMATCH') {
             if (isHost) {
                 let s1 = generateMines();
@@ -132,6 +132,7 @@ class Board {
         this.revealed = 0;
         this.flags = 0;
         this.frozen = false;
+        this.penaltyTimer = null;
         this.init();
     }
 
@@ -209,7 +210,7 @@ class Board {
         if(this.local && !net && conn) conn.send({type:'REVEAL', p:this.id, r, c});
 
         if(cell.isM) {
-            this.triggerLoss(net);
+            this.triggerPenalty(net);
         } else {
             if(cell.n === 0) {
                 for(let dr=-1; dr<=1; dr++)
@@ -234,13 +235,25 @@ class Board {
         }
     }
 
-    triggerLoss(net) {
+    triggerPenalty(net) {
+        if (this.frozen) return;
         this.frozen = true;
-        if(this.local && !net && conn) conn.send({type:'LOSS', p:this.id});
-        for(let r=0; r<ROWS; r++)
-            for(let c=0; c<COLS; c++)
-                if(this.grid[r][c].isM) { this.grid[r][c].isR = true; this.drawCell(r, c); }
-        endGame(this.id === 'p1' ? 'p2' : 'p1');
+        this.overlay.classList.remove('hidden');
+        
+        if(this.local && !net && conn) conn.send({type:'LOSS', p:this.id}); // Keeping 'LOSS' type for simplicity or change to 'PENALTY'
+
+        let timeLeft = 5;
+        this.overlay.querySelector('.penalty-timer').textContent = timeLeft;
+        
+        const interval = setInterval(() => {
+            timeLeft--;
+            this.overlay.querySelector('.penalty-timer').textContent = timeLeft;
+            if (timeLeft <= 0) {
+                clearInterval(interval);
+                this.frozen = false;
+                this.overlay.classList.add('hidden');
+            }
+        }, 1000);
     }
 }
 
