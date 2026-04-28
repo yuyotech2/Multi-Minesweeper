@@ -4,11 +4,23 @@ const MINES = 40;
 
 let gameActive = false;
 
+// URL Parsing for Invites
+const urlParams = new URLSearchParams(window.location.search);
+const joinRoomParam = urlParams.get('room');
+
 // WebRTC Networking Variables
 let peer = null;
 let conn = null;
 let isHost = false;
 let localPlayerId = '';
+
+// Check if player joined via URL Invite
+if (joinRoomParam) {
+    isHost = false;
+    localPlayerId = 'p2';
+    document.getElementById('menu-buttons').classList.add('hidden');
+    document.getElementById('joining-screen').classList.remove('hidden');
+}
 
 // Initialize PeerJS
 function initNetwork() {
@@ -16,7 +28,15 @@ function initNetwork() {
     
     peer.on('open', (id) => {
         document.getElementById('connection-status').classList.add('hidden');
-        document.getElementById('menu-buttons').classList.remove('hidden');
+        
+        if (joinRoomParam) {
+            // Automatically connect to the host's room code from the URL
+            conn = peer.connect(joinRoomParam);
+            setupConnection();
+        } else {
+            // Show the Host button if no room in URL
+            document.getElementById('menu-buttons').classList.remove('hidden');
+        }
     });
     
     peer.on('error', (err) => {
@@ -26,40 +46,45 @@ function initNetwork() {
 }
 
 function generateRoomCode() {
-    return 'NEON-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    return 'NEON-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
 function setupConnection() {
     conn.on('open', () => {
         document.getElementById('matchmaking-overlay').classList.add('hidden');
         
+        // Remove ?room=... from URL visually so it looks clean
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
         if (isHost) {
-            let mineSeed = generateMines();
-            let seedArr = Array.from(mineSeed);
-            conn.send({ type: 'INIT', seed: seedArr });
-            startGame(mineSeed);
+            let seed1 = generateMines();
+            let seed2 = generateMines();
+            conn.send({ type: 'INIT', seed1: Array.from(seed1), seed2: Array.from(seed2) });
+            startGame(seed1, seed2);
         }
     });
 
     conn.on('data', (data) => {
         if (data.type === 'INIT') {
             document.getElementById('matchmaking-overlay').classList.add('hidden');
-            let mineSeed = new Set(data.seed);
-            startGame(mineSeed);
+            let seed1 = new Set(data.seed1);
+            let seed2 = new Set(data.seed2);
+            startGame(seed1, seed2);
         } else if (data.type === 'REVEAL') {
             let board = data.player === 'p1' ? p1Board : p2Board;
             board.reveal(data.r, data.c, true);
         } else if (data.type === 'FLAG') {
             let board = data.player === 'p1' ? p1Board : p2Board;
             board.toggleFlag(data.r, data.c, true);
-        } else if (data.type === 'PENALTY') {
+        } else if (data.type === 'LOSS') {
             let board = data.player === 'p1' ? p1Board : p2Board;
-            board.triggerPenalty(true);
+            board.triggerLoss(true);
         } else if (data.type === 'REMATCH') {
             if (isHost) {
-                let mineSeed = generateMines();
-                conn.send({ type: 'INIT', seed: Array.from(mineSeed) });
-                startGame(mineSeed);
+                let seed1 = generateMines();
+                let seed2 = generateMines();
+                conn.send({ type: 'INIT', seed1: Array.from(seed1), seed2: Array.from(seed2) });
+                startGame(seed1, seed2);
             }
         }
     });
@@ -76,13 +101,17 @@ document.getElementById('btn-host').onclick = () => {
     localPlayerId = 'p1';
     let roomCode = generateRoomCode();
     
-    peer.destroy(); // Reconnect with a specific beautiful ID
+    peer.destroy(); 
     peer = new Peer(roomCode);
     
     peer.on('open', (id) => {
         document.getElementById('menu-buttons').classList.add('hidden');
         document.getElementById('lobby-screen').classList.remove('hidden');
-        document.getElementById('display-room-code').textContent = id;
+        
+        // Generate the URL Invite Link
+        let currentUrl = window.location.href.split('?')[0];
+        let inviteLink = `${currentUrl}?room=${id}`;
+        document.getElementById('invite-link-display').value = inviteLink;
     });
 
     peer.on('connection', (connection) => {
@@ -92,16 +121,11 @@ document.getElementById('btn-host').onclick = () => {
     });
 };
 
-document.getElementById('btn-join').onclick = () => {
-    let code = document.getElementById('join-code').value.toUpperCase().trim();
-    if (!code) return;
-    
-    isHost = false;
-    localPlayerId = 'p2';
-    document.getElementById('btn-join').textContent = "CONNECTING...";
-    
-    conn = peer.connect(code);
-    setupConnection();
+document.getElementById('btn-copy').onclick = () => {
+    let copyText = document.getElementById("invite-link-display");
+    copyText.select();
+    document.execCommand("copy");
+    document.getElementById('btn-copy').textContent = "COPIED TO CLIPBOARD!";
 };
 
 function generateMines() {
@@ -160,7 +184,6 @@ class Board {
             this.grid.push(row);
         }
 
-        // Pre-calculate numbers
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
                 if (!this.grid[r][c].isMine) {
@@ -210,18 +233,16 @@ class Board {
         
         let cell = this.grid[r][c];
         
-        // Right click
         if (e.button === 2) {
             this.toggleFlag(r, c, false);
             return;
         }
         
-        // Left click
         if (e.button === 0) {
             if (cell.isFlagged || cell.isRevealed) return;
             
             if (cell.isMine) {
-                this.triggerPenalty(false);
+                this.triggerLoss(false);
             } else {
                 this.reveal(r, c, false);
                 this.checkWin();
@@ -290,25 +311,26 @@ class Board {
         }
     }
 
-    triggerPenalty(fromNetwork) {
+    triggerLoss(fromNetwork) {
         this.isFrozen = true;
-        this.overlay.classList.remove('hidden');
-        let timeLeft = 5;
-        this.timerSpan.textContent = timeLeft;
         
         if (this.isLocal && !fromNetwork && conn) {
-            conn.send({ type: 'PENALTY', player: this.playerId });
+            conn.send({ type: 'LOSS', player: this.playerId });
+        }
+        
+        // Expose all mines on this board
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                if (this.grid[r][c].isMine) {
+                    this.grid[r][c].isRevealed = true;
+                    this.updateCellUI(r, c);
+                }
+            }
         }
 
-        let interval = setInterval(() => {
-            timeLeft--;
-            this.timerSpan.textContent = timeLeft;
-            if (timeLeft <= 0) {
-                clearInterval(interval);
-                this.isFrozen = false;
-                this.overlay.classList.add('hidden');
-            }
-        }, 1000);
+        // The opponent wins
+        let winnerId = this.playerId === 'p1' ? 'p2' : 'p1';
+        endGame(winnerId);
     }
 
     checkWin() {
@@ -319,9 +341,9 @@ class Board {
     }
 }
 
-function startGame(seed) {
-    p1Board = new Board('p1', seed, localPlayerId === 'p1');
-    p2Board = new Board('p2', seed, localPlayerId === 'p2');
+function startGame(seed1, seed2) {
+    p1Board = new Board('p1', seed1, localPlayerId === 'p1');
+    p2Board = new Board('p2', seed2, localPlayerId === 'p2');
     gameActive = true;
     document.getElementById('winner-modal').classList.add('hidden');
 }
@@ -334,12 +356,10 @@ function endGame(winnerId) {
     modal.classList.remove('hidden');
     if (winnerId === 'p1') {
         text.textContent = 'PLAYER 1 WINS';
-        text.style.color = 'var(--p1-color)';
-        text.style.textShadow = '0 0 20px var(--p1-color)';
+        text.style.color = 'cyan';
     } else {
         text.textContent = 'PLAYER 2 WINS';
-        text.style.color = 'var(--p2-color)';
-        text.style.textShadow = '0 0 20px var(--p2-color)';
+        text.style.color = 'orange';
     }
 }
 
@@ -348,20 +368,17 @@ document.getElementById('rematch-btn').addEventListener('click', () => {
     if (conn) {
         conn.send({ type: 'REMATCH' });
     }
-    // If host, also trigger init locally handled in conn.on('REMATCH') equivalent, but we put it there
     if (isHost) {
-        let mineSeed = generateMines();
-        conn.send({ type: 'INIT', seed: Array.from(mineSeed) });
-        startGame(mineSeed);
+        let seed1 = generateMines();
+        let seed2 = generateMines();
+        conn.send({ type: 'INIT', seed1: Array.from(seed1), seed2: Array.from(seed2) });
+        startGame(seed1, seed2);
     }
 });
 
-// Initialize empty boards so it looks nice before starting
 p1Board = new Board('p1', new Set(), false);
 p2Board = new Board('p2', new Set(), false);
 
-// Prevent global right click menu
 window.addEventListener('contextmenu', e => e.preventDefault());
 
-// Start networking
 initNetwork();
