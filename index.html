@@ -3,31 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neon Sweeper: Duel (Online)</title>
+    <title>Minesweeper Duel - Online</title>
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
 </head>
 <body>
     <!-- Matchmaking UI -->
     <div id="matchmaking-overlay">
         <div class="matchmaking-box">
-            <h1 class="title-glitch" data-text="NEON DUEL">NEON DUEL</h1>
-            <div id="connection-status">Connecting to matchmaking server...</div>
+            <div id="connection-status">
+                <div class="spinner"></div>
+                <p>Initializing Network...</p>
+            </div>
             
             <div id="menu-buttons" class="hidden">
-                <button id="btn-host">HOST GAME (Get Invite Code)</button>
-                <div class="divider-text">- OR -</div>
-                <input type="text" id="join-code" placeholder="ENTER INVITE CODE" maxlength="10">
-                <button id="btn-join">JOIN GAME</button>
+                <button id="btn-host">CREATE MULTIPLAYER MATCH</button>
+                <div style="margin-top: 10px;">
+                    <button id="btn-offline" style="background: #eee;">PLAY LOCAL (TEST)</button>
+                </div>
             </div>
 
             <div id="lobby-screen" class="hidden">
-                <h2>YOUR INVITE CODE:</h2>
-                <h1 id="display-room-code">----</h1>
-                <p>Send this code to your friend.</p>
+                <h2 style="color: blue; margin-bottom: 1rem;">YOUR INVITE LINK:</h2>
+                <input type="text" id="invite-link-display" readonly>
+                <button id="btn-copy">COPY LINK</button>
+                <div style="margin-top: 2rem;">
+                    <div class="spinner"></div>
+                    <p style="color: #000; margin-top: 1rem;">Waiting for opponent...</p>
+                </div>
+            </div>
+
+            <div id="joining-screen" class="hidden">
+                <h2 style="color: red; margin-bottom: 2rem;">JOINING MATCH...</h2>
                 <div class="spinner"></div>
-                <p>Waiting for them to join...</p>
             </div>
         </div>
     </div>
@@ -35,42 +43,42 @@
     <!-- Main Game -->
     <div id="game-container">
         <!-- Player 1 Side -->
-        <div id="p1-side" class="player-side p1-theme">
+        <div id="p1-side" class="player-side">
             <div class="hud">
-                <div class="player-name">PLAYER 1</div>
                 <div class="status-box">
-                    <span id="p1-mines">Mines: 40</span>
+                    <span id="p1-mines">000</span>
                 </div>
             </div>
             <div id="p1-board" class="minesweeper-board"></div>
             <div id="p1-overlay" class="penalty-overlay hidden">
-                SYSTEM FAULT<br><span class="penalty-timer">5</span>
+                <span class="penalty-timer">LOSS</span>
             </div>
         </div>
 
         <!-- Center Divider -->
         <div id="divider">
-            <div class="timer">ONLINE DUEL</div>
+            <div class="timer">VS</div>
         </div>
 
         <!-- Player 2 Side -->
-        <div id="p2-side" class="player-side p2-theme">
+        <div id="p2-side" class="player-side">
             <div class="hud">
-                <div class="player-name">PLAYER 2</div>
                 <div class="status-box">
-                    <span id="p2-mines">Mines: 40</span>
+                    <span id="p2-mines">000</span>
                 </div>
             </div>
             <div id="p2-board" class="minesweeper-board"></div>
             <div id="p2-overlay" class="penalty-overlay hidden">
-                SYSTEM FAULT<br><span class="penalty-timer">5</span>
+                <span class="penalty-timer">LOSS</span>
             </div>
         </div>
     </div>
     
     <div id="winner-modal" class="hidden">
-        <h1 id="winner-text">PLAYER 1 WINS</h1>
-        <button id="rematch-btn">PLAY AGAIN</button>
+        <div class="matchmaking-box" style="min-width: 300px;">
+            <h1 id="winner-text" style="margin-bottom: 20px;">WINS</h1>
+            <button id="rematch-btn">PLAY AGAIN</button>
+        </div>
     </div>
 
     <script src="main.js"></script>
