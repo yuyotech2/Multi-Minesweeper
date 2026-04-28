@@ -94,6 +94,7 @@ input {
 }
 
 .player-side {
+    position: relative;
     padding: 10px;
     border: 2px inset var(--win-border-dark);
     margin: 0 10px;
